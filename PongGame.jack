@@ -1,0 +1,272 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/11/Pong/PongGame.jack
+
+/**
+ * Represents a Pong game.
+ */
+class PongGame {
+
+    static PongGame instance; // the singleton, a Pong game instance     
+
+    // Jogador 1: barra inferior
+    field Bat batBottom;
+
+    // Jogador 2: barra superior
+    field Bat batTop;
+
+    field Ball ball;          // the ball
+    field int wall;           // the current wall that the ball is bouncing off of.
+    field boolean exit;       // true when the current match is over
+    field int score;          // the current score.
+    field int lastWall;       // the last wall that the ball bounced off of.
+
+    // The current width of the bats
+    field int batWidth;
+
+    // 0 = ninguém, 1 = Jogador 1 (barra inferior), 2 = Jogador 2 (barra superior)
+    field int loser;
+
+    /** Constructs a new Pong game. */
+    constructor PongGame new() {
+        do initGame();
+        return this;
+    }
+
+    /**
+     * Initializes or re-initializes the game state for a new match.
+     */
+    method void initGame() {
+        do Screen.clearScreen();
+
+        // Título do jogo
+        do Output.moveCursor(0, 21);
+        do Output.printString("|PONG - 2 JOGADORES|");
+
+        // Controle do jogador 1 (baixo à direita)
+        do Output.moveCursor(22, 53);
+        do Output.printString("J1: <-  ->");
+        
+        // Controle do jogador 2 (cima à direita)
+        do Output.moveCursor(0, 54);
+        do Output.printString("J2: A   D");
+
+        let batWidth = 50;  // initial bat size
+
+        // Jogador 1 - barra inferior (original)
+        let batBottom = Bat.new(230, 229, batWidth, 7);
+
+        // Jogador 2 - barra superior (espelhada na parte de cima da tela)
+        let batTop = Bat.new(230, 10, batWidth, 7);
+
+        // Bola (mantém os limites originais)
+        let ball = Ball.new(253, 222, 0, 511, 18, 229);
+        do ball.setDestination(400, 0);
+
+        // Linha inferior (referência visual)
+        do Screen.drawRectangle(0, 238, 511, 240);
+
+        // Placar
+        do Output.moveCursor(22, 0);
+        do Output.printString("Score: 0");
+
+        // Reset de variáveis de controle
+        let score = 0;
+        let wall = 0;
+        let lastWall = 0;
+        let loser = 0;
+        let exit = false;
+
+        return;
+    }
+
+    /** Deallocates the object's memory. */
+    method void dispose() {
+        do batBottom.dispose();
+        do batTop.dispose();
+        do ball.dispose();
+        do Memory.deAlloc(this);
+        return;
+    }
+
+    /** Creates an instance of Pong game, and stores it. */
+    function void newInstance() {
+        let instance = PongGame.new();
+        return;
+    }
+    
+    /** Returns the single instance of this Pong game. */
+    function PongGame getInstance() {
+        return instance;
+    }
+
+    /** Starts the game, and handles inputs from the users that control
+     *  the bats' movement directions. Allows multiple matches with restart.
+     */
+    method void run() {
+        var char key;
+        var boolean quit;    // true when the player wants to exit the game
+
+        let quit = false;
+
+        // Loop externo: enquanto o jogador não escolher sair do jogo
+        while (~quit) {
+
+            // Configura um novo jogo (nova partida)
+            do initGame();
+
+            // Loop da partida atual
+            while (~exit) {
+                let key = Keyboard.keyPressed();
+
+                // Controles Jogador 1 (barra inferior): setas esquerda/direita
+                if (key = 130) { do batBottom.setDirection(1); }           // left
+                else {
+                    if (key = 132) { do batBottom.setDirection(2); }       // right
+                    else {
+                        // Controles Jogador 2 (barra superior): 'a' e 'd'
+                        if (key = 97) { do batTop.setDirection(1); }       // 'a' = left
+                        else {
+                            if (key = 100) { do batTop.setDirection(2); }  // 'd' = right
+                            else {
+                                // ESC: sair do jogo imediatamente
+                                if (key = 140) {
+                                    let exit = true;
+                                    let loser = 0; // saída voluntária
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Move as duas barras e a bola a cada "frame"
+                do batBottom.move();
+                do batTop.move();
+                do moveBall();
+                do Sys.wait(50);
+            }
+
+            // Aqui a partida terminou (alguém perdeu ou ESC)
+            do Output.moveCursor(10, 17);
+            if (loser = 1) {
+                do Output.printString("Game Over - Jogador 1 perdeu");
+            }
+            else {
+                if (loser = 2) {
+                    do Output.printString("Game Over - Jogador 2 perdeu");
+                }
+                else {
+                    // fallback, caso exit seja true por ESC
+                    do Output.printString("Game Over");
+                }
+            }
+
+            // Mensagem com opções de reinício ou saída
+            do Output.moveCursor(12, 17);
+            do Output.printString("R = reiniciar  /  ESC = sair");
+
+            // Espera até o jogador apertar alguma tecla de decisão
+            let key = 0;
+            while (key = 0) {
+                let key = Keyboard.keyPressed();
+            }
+
+            // ESC: sai do jogo de vez
+            if (key = 140) {
+                let quit = true;
+            }
+            else {
+                // 'r' (114): reinicia outra partida
+                if (key = 114) {
+                    // apenas continua o while (~quit);
+                    // initGame() será chamado de novo na próxima iteração.
+                    let exit = false;
+                }
+                else {
+                    // Qualquer outra tecla também encerra o jogo
+                    let quit = true;
+                }
+            }
+        }
+
+        return;
+    }
+
+    /**
+     * Handles ball movement, including bouncing.   
+     * If the ball bounces off a wall, finds its new direction.
+     * If the ball bounces off one of the bats, increases the score by one
+     * and shrinks the bats' size, to make the game more challenging. 
+     */
+    method void moveBall() {
+        var int bouncingDirection, batLeft, batRight, ballLeft, ballRight;
+
+        let wall = ball.move();
+
+        if ((wall > 0) & (~(wall = lastWall))) {
+            let lastWall = wall;
+            let bouncingDirection = 0;
+
+            let ballLeft = ball.getLeft();
+            let ballRight = ball.getRight();
+
+            // Parede inferior (Jogador 1 - barra inferior)
+            if (wall = 4) {
+                let batLeft = batBottom.getLeft();
+                let batRight = batBottom.getRight();
+
+                let exit = (batLeft > ballRight) | (batRight < ballLeft);
+                if (~exit) {
+                    if (ballRight < (batLeft + 10)) { let bouncingDirection = -1; }
+                    else {
+                        if (ballLeft > (batRight - 10)) { let bouncingDirection = 1; }
+                    }
+
+                    let batWidth = batWidth - 2;
+                    do batBottom.setWidth(batWidth);
+                    do batTop.setWidth(batWidth);
+
+                    let score = score + 1;
+                    do Output.moveCursor(22, 7);
+                    do Output.printInt(score);
+                }
+                else {
+                    let loser = 1;   // Jogador 1 perdeu
+                }
+            }
+            else {
+                // Parede superior (Jogador 2 - barra superior)
+                if (wall = 3) {
+                    let batLeft = batTop.getLeft();
+                    let batRight = batTop.getRight();
+
+                    let exit = (batLeft > ballRight) | (batRight < ballLeft);
+                    if (~exit) {
+                        if (ballRight < (batLeft + 10)) { let bouncingDirection = -1; }
+                        else {
+                            if (ballLeft > (batRight - 10)) { let bouncingDirection = 1; }
+                        }
+
+                        let batWidth = batWidth - 2;
+                        do batBottom.setWidth(batWidth);
+                        do batTop.setWidth(batWidth);
+
+                        let score = score + 1;
+                        do Output.moveCursor(22, 7);
+                        do Output.printInt(score);
+                    }
+                    else {
+                        let loser = 2; // Jogador 2 perdeu
+                    }
+                }
+            }
+
+            // Se o jogo ainda não acabou, faz a bola quicar
+            if (~exit) {
+                do ball.bounce(bouncingDirection);
+            }
+        }
+        return;
+    }
+}
