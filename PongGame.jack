@@ -44,13 +44,16 @@ class PongGame {
         do Output.moveCursor(0, 21);
         do Output.printString("|PONG - 2 JOGADORES|");
 
-        // Controle do jogador 1 (baixo à direita)
+        // Controle do jogador 1 (BAIXO à direita)
         do Output.moveCursor(22, 53);
         do Output.printString("J1: <-  ->");
         
-        // Controle do jogador 2 (cima à direita)
+        // Controle do jogador 2 (CIMA à direita)
         do Output.moveCursor(0, 54);
         do Output.printString("J2: A   D");
+
+        // Linha superior (referência visual)
+        do Screen.drawRectangle(0, 8, 511, 10);
 
         let batWidth = 50;  // initial bat size
 
